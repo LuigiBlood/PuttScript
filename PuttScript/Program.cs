@@ -193,8 +193,7 @@ namespace PuttScript
                 text_out += table_out;
                 i += dict[index_use].Item1.Length / 2;
             }
-
-            StreamWriter text_f = new StreamWriter(File.OpenWrite(Path.GetFileNameWithoutExtension(inputfile) + "_out.txt"));
+            StreamWriter text_f = new StreamWriter(File.Open(Path.GetFileNameWithoutExtension(inputfile) + "_out.txt", FileMode.Create));
             text_f.Write(text_out);
             text_f.Close();
 
@@ -304,7 +303,7 @@ namespace PuttScript
                 }
             }
 
-            FileStream bin_f = File.OpenWrite(Path.GetFileNameWithoutExtension(inputfile) + "_out.bin");
+            FileStream bin_f = File.Open(Path.GetFileNameWithoutExtension(inputfile) + "_out.bin", FileMode.Create);
             bin_f.Write(bin_out.ToArray(), 0, bin_out.Count);
             bin_f.Close();
 
