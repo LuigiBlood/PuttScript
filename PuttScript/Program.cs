@@ -138,23 +138,38 @@ namespace PuttScript
                 for (int j = 0; j < dict.Count; j++)
                 {
                     int score = 0;
-                    for (int k = 0; k < (dict[j].Item1.Length / 2); k++)
+                    
+                    if (!dict[j].Item1.Contains("%%") && (i + (dict[j].Item1.Length / 2) <= input.Length))
                     {
-                        string byte_tbl = dict[j].Item1.Substring(k * 2, 2);
-                        string byte_in = input[i + k].ToString("X2");
+                        string byte_str = "";
+                        for (int k = 0; k < (dict[j].Item1.Length / 2); k++)
+                        {
+                            byte_str += input[i + k].ToString("X2");
+                        }
 
-                        if (byte_tbl == "%%")
+                        if (dict[j].Item1 == byte_str)
+                            score = 1;
+                    }
+                    else if (i + (dict[j].Item1.Length / 2) <= input.Length)
+                    {
+                        for (int k = 0; k < (dict[j].Item1.Length / 2); k++)
                         {
-                            score++;
-                        }
-                        else if (byte_tbl == byte_in)
-                        {
-                            score += 2;
-                        }
-                        else
-                        {
-                            score = 0;
-                            break;
+                            string byte_tbl = dict[j].Item1.Substring(k * 2, 2);
+                            string byte_in = input[i + k].ToString("X2");
+
+                            if (byte_tbl == "%%")
+                            {
+                                score++;
+                            }
+                            else if (byte_tbl == byte_in)
+                            {
+                                score += 2;
+                            }
+                            else
+                            {
+                                score = 0;
+                                break;
+                            }
                         }
                     }
 
@@ -167,7 +182,7 @@ namespace PuttScript
 
                 if (index_use == -1)
                 {
-                    Console.WriteLine("ERROR:\nInput file offset 0x" + i.ToString("X") + ":" + input[i].ToString("X2") + "  " + input[i + 1].ToString("X2") + " " + input[i + 2].ToString("X2") + " " + input[i + 3].ToString("X2") + "... not defined in table");
+                    Console.WriteLine("ERROR:\nInput file offset 0x" + i.ToString("X") + ":" + input[i].ToString("X2") + "... not defined in table");
                     return 1;
                 }
 
