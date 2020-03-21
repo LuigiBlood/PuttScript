@@ -249,7 +249,7 @@ namespace PuttScript
                         if ((c + dict[j].Item2.Length) > text_in[i].Length)
                             continue;
 
-                        if (!dict[j].Item2.Contains("%%") && (dict[j].Item2.Equals(text_in[i].Substring(c, dict[j].Item2.Length))))
+                        if (!dict[j].Item1.Contains("%%") && !dict[j].Item2.Contains("%%") && (dict[j].Item2.Equals(text_in[i].Substring(c, dict[j].Item2.Length))))
                         {
                             score = 1;
                         }
@@ -260,7 +260,7 @@ namespace PuttScript
                                 string char_tbl = dict[j].Item2.Substring(k, 1);
                                 string chat_in = text_in[i].Substring(c + k, 1);
 
-                                if (char_tbl == "%")
+                                if (char_tbl == "%" && dict[j].Item1.Contains("%%"))
                                 {
                                     score++;
                                 }
@@ -286,7 +286,7 @@ namespace PuttScript
                     if (index_use == -1)
                     {
                         Console.WriteLine("ERROR:\nInput file line " + (i + 1).ToString() + ":\n\"" + text_in[i] + "\" not defined in table");
-                        Console.WriteLine("^".PadLeft(c + 1));
+                        Console.WriteLine("^".PadLeft(c + 2));
                         return 1;
                     }
 
