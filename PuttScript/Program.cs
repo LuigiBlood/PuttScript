@@ -57,25 +57,29 @@ namespace PuttScript
             while (!table.EndOfStream)
             {
                 test = table.ReadLine();
-                if (!Regex.IsMatch(test, regexrule))
+                if (Regex.IsMatch(test, regexrule))
                 {
+                    //string[] value = Regex.Split(test, regexrule);
+                    string[] value = test.Split('=', 2);
+                    if ((value[0].Length & 1) == 1)
+                    {
+                        Console.WriteLine("ERROR:\nTable line " + line + ": \"" + test + "\"");
+                        return 1;
+                    }
+                    string hex = value[0].ToUpperInvariant();
+                    string text = value[1].Replace('\\', '\n');
+
+                    if (order != 0)
+                        text = text.Trim('\n');
+
+                    dict.Add(new Tuple<string, string>(hex, text));
+                }
+                else if (!test.StartsWith(";") && !test.StartsWith("//") && (test.Trim() != ""))
+                {
+                    //lines that starts with ; or // or empty are not counted
                     Console.WriteLine("ERROR:\nCan't recognize at table line " + line + ": \"" + test + "\"");
                     return 1;
                 }
-                //string[] value = Regex.Split(test, regexrule);
-                string[] value = test.Split('=', 2);
-                if ((value[0].Length & 1) == 1)
-                {
-                    Console.WriteLine("ERROR:\nTable line " + line + ": \"" + test + "\"");
-                    return 1;
-                }
-                string hex = value[0].ToUpperInvariant();
-                string text = value[1].Replace('\\', '\n');
-
-                if (order != 0)
-                    text = text.Trim('\n');
-
-                dict.Add(new Tuple<string, string>(hex, text));
                 line++;
             }
 
@@ -103,8 +107,8 @@ namespace PuttScript
                 }
             });
 
-            foreach (Tuple<string, string> x in dict)
-                Console.WriteLine(x.Item1 + ":" + x.Item2);
+            //foreach (Tuple<string, string> x in dict)
+                //Console.WriteLine(x.Item1 + ":" + x.Item2);
             return 0;
         }
 
