@@ -21,7 +21,7 @@ namespace PuttScript
         static void Main(string[] args)
         {
             Console.WriteLine("PuttScript\nby LuigiBlood\n");
-            if (args.Length == 3)
+            if (args.Length >= 3)
             {
                 if (args[0] != "-d" && args[0] != "-e")
                     Console.WriteLine("Unknown option");
@@ -30,14 +30,22 @@ namespace PuttScript
                     Console.WriteLine("One of the files does not exist");
 
                 //Do the thing
+                string outputfilepath = Path.GetFileNameWithoutExtension(args[2]) + "_out" + ((args[0] == "-d") ? ".txt" : ".bin");
+                if (args.Length > 3 && args[3] != "")
+                    outputfilepath = args[3];
+
                 if (args[0] == "-d")
-                    Decode(args[1], args[2]);
+                {
+                    Decode(args[1], args[2], outputfilepath);
+                }
                 else if (args[0] == "-e")
-                    Encode(args[1], args[2]);
+                {
+                    Encode(args[1], args[2], outputfilepath);
+                }
             }
             else if (args.Length == 0)
             {
-                Console.WriteLine("Usage:\nputtscript <options> <table file> <input file>\nOptions:\n  -d: Decode Binary into Text file\n  -e: Encode Text file into Binary");
+                Console.WriteLine("Usage:\nputtscript <options> <table file> <input file> <optional output file>\nOptions:\n  -d: Decode Binary into Text file\n  -e: Encode Text file into Binary");
             }
             else
             {
@@ -112,7 +120,7 @@ namespace PuttScript
             return 0;
         }
 
-        static int Decode(string tablefile, string inputfile)
+        static int Decode(string tablefile, string inputfile, string outputfile)
         {
             //Input File = Binary
 
@@ -212,16 +220,16 @@ namespace PuttScript
                 text_out += table_out;
                 i += dict[index_use].Item1.Length / 2;
             }
-            StreamWriter text_f = new StreamWriter(File.Open(Path.GetFileNameWithoutExtension(inputfile) + "_out.txt", FileMode.Create));
+            StreamWriter text_f = new StreamWriter(File.Open(outputfile, FileMode.Create));
             text_f.Write(text_out);
             text_f.Close();
 
-            Console.WriteLine("Written as " + Path.GetFileNameWithoutExtension(inputfile) + "_out.txt");
+            Console.WriteLine("Written as " + outputfile);
 
             return 0;
         }
 
-        static int Encode(string tablefile, string inputfile)
+        static int Encode(string tablefile, string inputfile, string outputfile)
         {
             //Input File = Text
 
@@ -322,11 +330,11 @@ namespace PuttScript
                 }
             }
 
-            FileStream bin_f = File.Open(Path.GetFileNameWithoutExtension(inputfile) + "_out.bin", FileMode.Create);
+            FileStream bin_f = File.Open(outputfile, FileMode.Create);
             bin_f.Write(bin_out.ToArray(), 0, bin_out.Count);
             bin_f.Close();
 
-            Console.WriteLine("Written as " + Path.GetFileNameWithoutExtension(inputfile) + "_out.bin");
+            Console.WriteLine("Written as " + outputfile);
 
             return 0;
         }
