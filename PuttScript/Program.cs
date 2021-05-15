@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace PuttScript
@@ -30,22 +32,25 @@ namespace PuttScript
                     Console.WriteLine("One of the files does not exist");
 
                 //Do the thing
-                string outputfilepath = Path.GetFileNameWithoutExtension(args[2]) + "_out" + ((args[0] == "-d") ? ".txt" : ".bin");
+                string outputfilepath = Path.GetFileNameWithoutExtension(args[2]) + "_out" +
+                                        ((args[0] == "-d") ? ".txt" : ".bin");
                 if (args.Length > 3 && args[3] != "")
                     outputfilepath = args[3];
 
-                if (args[0] == "-d")
+                switch (args[0])
                 {
-                    Decode(args[1], args[2], outputfilepath);
-                }
-                else if (args[0] == "-e")
-                {
-                    Encode(args[1], args[2], outputfilepath);
+                    case "-d":
+                        Decode(args[1], args[2], outputfilepath);
+                        break;
+                    case "-e":
+                        Encode(args[1], args[2], outputfilepath);
+                        break;
                 }
             }
             else if (args.Length == 0)
             {
-                Console.WriteLine("Usage:\nputtscript <options> <table file> <input file> <optional output file>\nOptions:\n  -d: Decode Binary into Text file\n  -e: Encode Text file into Binary");
+                Console.WriteLine(
+                    "Usage:\nputtscript <options> <table file> <input file> <optional output file>\nOptions:\n  -d: Decode Binary into Text file\n  -e: Encode Text file into Binary");
             }
             else
             {
@@ -53,7 +58,48 @@ namespace PuttScript
             }
         }
 
-        static int GetDict(string tablefile, int order, out List<Tuple<string, string>> dict)
+        private static string ComputeHash(string text)
+        {
+            // Calculates CRC value for string comparisons
+            using var md5 = System.Security.Cryptography.MD5.Create();
+            var hash = BitConverter.ToString(
+                md5.ComputeHash(Encoding.UTF8.GetBytes(text))).Replace("-", "");
+            md5.Dispose();
+            return hash;
+        }
+
+        private static void SaveCache(Dictionary<string, byte[]> cache)
+        {  // Saving cache by serializing the object to a file
+            using (Stream ms = File.OpenWrite("putt_cache.db"))
+            {
+                BinaryFormatter formatter = new BinaryFormatter();
+                formatter.Serialize(ms, cache);
+                ms.Flush();
+                ms.Close();
+                ms.Dispose();
+            }
+        }
+
+        private static Dictionary<string, byte[]> LoadCache()
+        {  // loading the previously serialized object into a dictionary
+            if (File.Exists("putt_cache.db"))
+            {
+                BinaryFormatter formatter = new BinaryFormatter();
+                object cache = null;
+                using (FileStream fs = File.Open("putt_cache.db", FileMode.Open))
+                {
+                    cache = formatter.Deserialize(fs);
+                    fs.Flush();
+                    fs.Close();
+                    fs.Dispose();
+                }
+                if (!(cache is null))
+                    return (Dictionary<string, byte[]>)cache;
+            }
+            return new Dictionary<string, byte[]>();
+        }
+
+        private static int GetDict(string tablefile, int order, out List<Tuple<string, string>> dict)
         {
             //Key = Hex, Value = UTF8
 
@@ -88,6 +134,7 @@ namespace PuttScript
                     Console.WriteLine("ERROR:\nCan't recognize at table line " + line + ": \"" + test + "\"");
                     return 1;
                 }
+
                 line++;
             }
 
@@ -120,7 +167,7 @@ namespace PuttScript
             return 0;
         }
 
-        static int Decode(string tablefile, string inputfile, string outputfile)
+        private static int Decode(string tablefile, string inputfile, string outputfile)
         {
             //Input File = Binary
 
@@ -132,8 +179,8 @@ namespace PuttScript
             //Convert to Text
             FileStream input_f = File.OpenRead(inputfile);
             string text_out = "";
-            
-            int length = (int)Math.Min(input_f.Length, 0x1000000L);
+
+            int length = (int) Math.Min(input_f.Length, 0x1000000L);
             byte[] input = new byte[length];
 
             input_f.Read(input, 0, length);
@@ -194,7 +241,8 @@ namespace PuttScript
 
                 if (index_use == -1)
                 {
-                    Console.WriteLine("ERROR:\nInput file offset 0x" + i.ToString("X") + ":" + input[i].ToString("X2") + "... not defined in table");
+                    Console.WriteLine("ERROR:\nInput file offset 0x" + i.ToString("X") + ":" +
+                                      input[i].ToString("X2") + "... not defined in table");
                     return 1;
                 }
 
@@ -229,10 +277,11 @@ namespace PuttScript
             return 0;
         }
 
-        static int Encode(string tablefile, string inputfile, string outputfile)
+        private static int Encode(string tablefile, string inputfile, string outputfile)
         {
-            //Input File = Text
+            var cache_dict = LoadCache();
 
+            //Input File = Text
             List<Tuple<string, string>> dict;
             int DictError = GetDict(tablefile, 1, out dict);
             if (DictError != 0)
@@ -248,91 +297,119 @@ namespace PuttScript
             for (int i = 0; i < text_in.Length; i++)
             {
                 Console.SetCursorPosition(0, Console.CursorTop - 1);
-                Console.WriteLine("Progress: " + Math.Ceiling((double)i / text_in.Length * 100d) + "%  ");
-                //text_in[i] = text_in[i].Trim('\n');
-                for (int c = 0; c < text_in[i].Length;)
+                Console.WriteLine("Progress: " + Math.Ceiling((double) i / text_in.Length * 100d) + "%  ");
+                var crcVal = ComputeHash(text_in[i]);
+                if (!cache_dict.ContainsKey(crcVal))
                 {
-                    int index_use = -1;
-
-                    for (int j = 0; j < dict.Count; j++)
+                    var this_bytes = new List<byte>();
+                    
+                    //text_in[i] = text_in[i].Trim('\n');
+                    for (int c = 0; c < text_in[i].Length;)
                     {
-                        int score = 0;
+                        int index_use = -1;
 
-                        if ((c + dict[j].Item2.Length) > text_in[i].Length)
-                            continue;
+                        for (int j = 0; j < dict.Count; j++)
+                        {
+                            int score = 0;
 
-                        if (!dict[j].Item1.Contains("%%") && !dict[j].Item2.Contains("%%") && (dict[j].Item2.Equals(text_in[i].Substring(c, dict[j].Item2.Length))))
-                        {
-                            score = 1;
-                        }
-                        else
-                        {
-                            for (int k = 0; k < dict[j].Item2.Length; k++)
+                            if ((c + dict[j].Item2.Length) > text_in[i].Length)
+                                continue;
+
+                            if (!dict[j].Item1.Contains("%%") && !dict[j].Item2.Contains("%%") &&
+                                (dict[j].Item2.Equals(text_in[i].Substring(c, dict[j].Item2.Length))))
                             {
-                                string char_tbl = dict[j].Item2.Substring(k, 1);
-                                string chat_in = text_in[i].Substring(c + k, 1);
+                                score = 1;
+                            }
+                            else
+                            {
+                                for (int k = 0; k < dict[j].Item2.Length; k++)
+                                {
+                                    string char_tbl = dict[j].Item2.Substring(k, 1);
+                                    string chat_in = text_in[i].Substring(c + k, 1);
 
-                                if (char_tbl == "%" && dict[j].Item1.Contains("%%"))
-                                {
-                                    score++;
+                                    if (char_tbl == "%" && dict[j].Item1.Contains("%%"))
+                                    {
+                                        score++;
+                                    }
+                                    else if (char_tbl == chat_in)
+                                    {
+                                        score += 2;
+                                    }
+                                    else
+                                    {
+                                        score = 0;
+                                        break;
+                                    }
                                 }
-                                else if (char_tbl == chat_in)
-                                {
-                                    score += 2;
-                                }
-                                else
-                                {
-                                    score = 0;
-                                    break;
-                                }
+                            }
+
+                            if (score != 0)
+                            {
+                                index_use = j;
+                                break;
                             }
                         }
 
-                        if (score != 0)
+                        if (index_use == -1)
                         {
-                            index_use = j;
-                            break;
+                            Console.WriteLine("ERROR:\nInput file line " + (i + 1).ToString() + ":\n\"" +
+                                              text_in[i] +
+                                              "\" not defined in table");
+                            Console.WriteLine("^".PadLeft(c + 2));
+                            return 1;
                         }
+
+                        //Deal with %%
+                        string table_in = dict[index_use].Item2;
+                        string table_out = dict[index_use].Item1;
+                        string text_input = text_in[i].Substring(c, table_in.Length);
+
+                        //Console.WriteLine(table_in.Length + " : " + table_in + " - " + text_input.Length + " : " + text_input);
+
+                        while (table_out.Contains("%%"))
+                        {
+                            int index_in = table_in.IndexOf("%%");
+                            int index_out = table_out.IndexOf("%%");
+                            table_in = table_in.Remove(index_in, 2)
+                                .Insert(index_in, text_input.Substring(index_in, 2));
+                            table_out = table_out.Remove(index_out, 2)
+                                .Insert(index_out, text_input.Substring(index_in, 2));
+                        }
+
+                        /*
+                        if (!table_in.Equals(text_input))
+                        {
+                            Console.WriteLine("ERROR:\nInput file line " + (i + 1).ToString() + ":\n\"" + text_in[i] + "\" problem");
+                            Console.WriteLine("^".PadLeft(c + 1));
+                            return 1;
+                        }*/
+                        for (int b = 0; b < table_out.Length / 2; b++)
+                        {
+                            var this_byte = Byte.Parse(table_out.Substring(b * 2, 2),
+                                NumberStyles.HexNumber);
+                            this_bytes.Add(this_byte);
+                            bin_out.Add(this_byte);
+                        }
+                        c += text_input.Length;
                     }
-
-                    if (index_use == -1)
+                    // add to cache dictionary by crc
+                    if (this_bytes.Count > 0)
                     {
-                        Console.WriteLine("ERROR:\nInput file line " + (i + 1).ToString() + ":\n\"" + text_in[i] + "\" not defined in table");
-                        Console.WriteLine("^".PadLeft(c + 2));
-                        return 1;
+                        cache_dict.Add(crcVal, this_bytes.ToArray());
                     }
-
-                    //Deal with %%
-                    string table_in = dict[index_use].Item2;
-                    string table_out = dict[index_use].Item1;
-                    string text_input = text_in[i].Substring(c, table_in.Length);
-
-                    //Console.WriteLine(table_in.Length + " : " + table_in + " - " + text_input.Length + " : " + text_input);
-
-                    while (table_out.Contains("%%"))
-                    {
-                        int index_in = table_in.IndexOf("%%");
-                        int index_out = table_out.IndexOf("%%");
-                        table_in = table_in.Remove(index_in, 2).Insert(index_in, text_input.Substring(index_in, 2));
-                        table_out = table_out.Remove(index_out, 2).Insert(index_out, text_input.Substring(index_in, 2));
-                    }
-                    /*
-                    if (!table_in.Equals(text_input))
-                    {
-                        Console.WriteLine("ERROR:\nInput file line " + (i + 1).ToString() + ":\n\"" + text_in[i] + "\" problem");
-                        Console.WriteLine("^".PadLeft(c + 1));
-                        return 1;
-                    }*/
-
-                    for (int b = 0; b < table_out.Length / 2; b++)
-                        bin_out.Add(Byte.Parse(table_out.Substring(b * 2, 2), NumberStyles.HexNumber));
-                    c += text_input.Length;
+                }
+                else
+                {
+                    // add to binary from crc cache
+                    bin_out.AddRange(cache_dict[crcVal]);
                 }
             }
 
             FileStream bin_f = File.Open(outputfile, FileMode.Create);
             bin_f.Write(bin_out.ToArray(), 0, bin_out.Count);
             bin_f.Close();
+
+            SaveCache(cache_dict);
 
             Console.WriteLine("Written as " + outputfile);
 
